@@ -1,5 +1,5 @@
 
-/// A comma-separated item of an `_order` string, e.g. ` partner_id desc nulls last`.
+/// A comma-separated item of an order string, e.g. ` partner_id desc nulls last`.
 pub struct OrderItem<'a> {
     pub text: &'a str,
     /// Index of the item in the string
@@ -7,7 +7,7 @@ pub struct OrderItem<'a> {
 }
 
 impl<'a> OrderItem<'a> {
-    /// The items of an `_order` string such as `"name desc, id"`.
+    /// The items of an order string such as `"name desc, id"`.
     pub fn order_items(order: &str) -> Vec<OrderItem<'_>> {
         let mut start = 0;
         order.split(',').map(|text| {

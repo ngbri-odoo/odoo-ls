@@ -65,7 +65,7 @@ pub(super) fn resolve_string_in_context(
         },
         StringContext::ModelOrder => {
             let model_class = order_model_class(session, scope)?;
-            StringResolution::from_members(find_order_fields(session, model_class, from_module, string, pick))
+            StringResolution::from_members(find_order_fields(session, model_class.into(), from_module, string, pick))
         },
     }
 }

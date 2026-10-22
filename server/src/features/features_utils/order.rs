@@ -1,7 +1,7 @@
 use ruff_python_ast::ExprStringLiteral;
 use ruff_text_size::{TextRange, TextSize};
 use crate::core::evaluation_utils::DeepFieldEvalWalker;
-use crate::core::symbols::symbol_keys::{ClassKey, ModuleKey, SymbolKey};
+use crate::core::symbols::symbol_keys::{ClassKey, ModelSymbolKey, ModuleKey, SymbolKey};
 use crate::features::ast_utils::AstUtils;
 use crate::threads::SessionInfo;
 
@@ -17,11 +17,11 @@ pub fn order_model_class(session: &SessionInfo, scope: SymbolKey) -> Option<Clas
     session.st()[class]._model.is_some().then_some(class)
 }
 
-/// Fields of `_order = "name desc, partner_id.id"`, with their range in the file. The property
-/// of a field (`.id`) is a field of its comodel.
+/// Fields of an order on `model`, e.g. `_order = "name desc, partner_id.id"`, with their range in
+/// the file. The property of a field (`.id`) is a field of its comodel.
 pub(super) fn find_order_fields(
     session: &mut SessionInfo,
-    model_class: ClassKey,
+    model: ModelSymbolKey,
     from_module: Option<ModuleKey>,
     string: &ExprStringLiteral,
     pick: SegmentPick,
@@ -42,7 +42,7 @@ pub(super) fn find_order_fields(
             continue;
         }
         // The field on the model, then its property on the comodel
-        let mut walker = DeepFieldEvalWalker::new(model_class.into(), from_module);
+        let mut walker = DeepFieldEvalWalker::new(model.into(), from_module);
         for (name, start, end) in [item.field(), item.property()].into_iter().flatten() {
             let Some(model) = walker.get_model_symbol(session) else {
                 break;

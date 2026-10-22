@@ -13,6 +13,7 @@ use crate::threads::SessionInfo;
 use super::api_decorators::{api_decorator, find_decorator_arg_symbols};
 use super::field_params::{find_field_param_resolution, FieldParam};
 use super::field_paths;
+use super::order;
 use super::string_resolution::{SegmentPick, StringResolution};
 
 /// What the callee of `call_expr` refers to, each as its weak evaluation and its symbol.
@@ -103,10 +104,18 @@ fn is_domain_param(session: &SessionInfo, param: VariableKey) -> bool {
         .any(|evaluation| matches!(evaluation.symbol.get_symbol_ptr(), EvaluationSymbolPtr::DOMAIN))
 }
 
+/// Whether `param` takes an order, e.g. `order` of `search`.
+fn is_order_param(session: &SessionInfo, param: VariableKey) -> bool {
+    session.st()[param].evaluations.iter()
+        .any(|evaluation| matches!(evaluation.symbol.get_symbol_ptr(), EvaluationSymbolPtr::ORDER))
+}
+
 /// What a string given to a parameter names, for the parameters naming something of a model.
 enum ParamKind {
     /// A domain on the model the method is called on, e.g. `search(domain=[('name', '=', 'x')])`
     Domain,
+    /// An order on the model the method is called on, e.g. `search(order='name desc')`
+    Order,
     /// A parameter of a field class, e.g. `fields.Char(related='partner_id.name')`
     Field(FieldParam),
 }
@@ -125,6 +134,11 @@ impl ParamKind {
         if param.is_some_and(|param| is_domain_param(session, param)) {
             return Some(ParamKind::Domain);
         }
+        if param.is_some_and(|param| is_order_param(session, param)) {
+            // The order is the string itself, not an item of it
+            return matches!(value, Expr::StringLiteral(value_string) if value_string.range == string.range)
+                .then_some(ParamKind::Order);
+        }
         if !SymbolTable::is_field_class(session, callable_sym) {
             return None;
         }
@@ -137,10 +151,10 @@ impl ParamKind {
     }
 
     /// Whether the keyword argument `name` can be of a kind, known before evaluating the callee: only
-    /// the `domain` parameter of `search` is marked as a domain, see its hook, and whether the field
-    /// class takes the parameter is checked once known.
+    /// the `domain` of `search` and the `order` of the search methods are marked, see their hooks, and
+    /// whether the field class takes the parameter is checked once known.
     fn can_be_keyword(session: &SessionInfo, name: &str, value: &Expr, string: &ExprStringLiteral) -> bool {
-        name == "domain"
+        matches!(name, "domain" | "order")
             || FieldParam::of_name(session, name).is_some_and(|field_param| field_param.is_in_value(value, string))
     }
 }
@@ -188,6 +202,9 @@ pub(super) fn find_argument_symbols(
             match ParamKind::of(session, callable_sym, param, keyword_name, value, string) {
                 Some(ParamKind::Domain) => model_called_on(session, &callable).and_then(|model|
                     StringResolution::from_members(field_paths::find_domain_param_symbols(session, model, string, from_module, pick))
+                ),
+                Some(ParamKind::Order) => model_called_on(session, &callable).and_then(|model|
+                    StringResolution::from_members(order::find_order_fields(session, model, from_module, string, pick))
                 ),
                 Some(ParamKind::Field(field_param)) => {
                     find_field_param_resolution(session, scope, from_module, string, call_expr, field_param, pick)
