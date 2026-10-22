@@ -647,6 +647,12 @@ fn complete_call(session: &mut SessionInfo, file: SourceFileKey, expr_call: &ruf
                         return complete_expr(value, session, file, offset, is_param, &[ExpectedType::DOMAIN(parent)]);
                     }
                 }
+                EvaluationSymbolPtr::ORDER => {
+                    if let Some(SymbolKey::Class(model_class)) = callable.context.get(ContextKey::BaseAttr)
+                        .and_then(|parent_value| parent_value.as_symbol().upgrade(session.st())) {
+                        return complete_expr(value, session, file, offset, is_param, &[ExpectedType::ORDER(model_class)]);
+                    }
+                }
                 _ => {}
             }
         }
@@ -1259,7 +1265,7 @@ fn complete_model_order(
     }
 }
 
-/// The `id` of a many2one field, the only property `_order` accepts (`partner_id.id`).
+/// The `id` of a many2one field, the only property an order accepts (`partner_id.id`).
 fn add_order_property(
     session: &mut SessionInfo,
     items: &mut Vec<CompletionItem>,
@@ -1288,7 +1294,7 @@ fn add_order_property(
     }
 }
 
-/// Keywords of an `_order` item that start with the word being typed, e.g. `desc` for `de`.
+/// Keywords of an order item that start with the word being typed, e.g. `desc` for `de`.
 fn add_order_keywords(items: &mut Vec<CompletionItem>, keywords: &[&str], current: &str) {
     let current = current.to_ascii_lowercase();
     items.extend(keywords.iter().filter(|keyword| keyword.starts_with(&current)).map(|keyword| CompletionItem {
