@@ -1,17 +1,33 @@
 use lsp_types::Diagnostic;
-use ruff_python_ast::ExprStringLiteral;
+use ruff_python_ast::{Expr, ExprStringLiteral};
 use ruff_text_size::Ranged;
 use crate::core::diagnostics::{create_diagnostic, DiagnosticCode};
 use crate::core::evaluation_utils::DeepFieldEvalWalker;
 use crate::core::file_mgr::FileMgr;
-use crate::core::symbols::symbol_keys::{ClassKey, ModuleKey};
+use crate::core::symbols::symbol_keys::{ClassKey, ModuleKey, SymbolKey, Wk};
 use crate::features::ast_utils::AstUtils;
 use crate::features::features_utils::OrderItem;
 use crate::threads::SessionInfo;
 
+/// Diagnostics of the argument `value` given to the order of a search method, on the model it is
+/// called on: a string literal, on a model class
+pub(crate) fn validate_order_arg(
+    session: &mut SessionInfo<'_>,
+    on_object: Wk<SymbolKey>,
+    from_module: Option<ModuleKey>,
+    value: &Expr,
+) -> Vec<Diagnostic> {
+    if let Expr::StringLiteral(order_string) = value
+        && let Some(SymbolKey::Class(model_class)) = on_object.upgrade(session.st())
+    {
+        return validate_order(session, model_class, from_module, order_string);
+    }
+    vec![]
+}
+
 /// Diagnostics of an order on the model of `class`, e.g. `_order = "name desc"`: its empty items,
 /// then the field, property and keywords of each item.
-pub(crate) fn validate_order(
+pub(super) fn validate_order(
     session: &mut SessionInfo,
     class: ClassKey,
     maybe_from_module: Option<ModuleKey>,
@@ -20,7 +36,7 @@ pub(crate) fn validate_order(
     let mut diagnostics = vec![];
     let order = order_string.value.to_str();
     if order.is_empty() {
-        return diagnostics; // an empty _order attribute is valid
+        return diagnostics; // an empty order is valid
     }
     let mut reported_comma = None;
     for item in OrderItem::order_items(order) {
@@ -35,14 +51,14 @@ pub(crate) fn validate_order(
             }
             continue;
         }
-        check_model_order_item(session, &mut diagnostics, class, maybe_from_module, order_string, item);
+        check_order_item(session, &mut diagnostics, class, maybe_from_module, order_string, item);
     }
     diagnostics
 }
 
-/// Validation for one item of the _order attribute, e.g. `partner_id.id desc`: its field must
+/// Validation for one item of an order, e.g. `partner_id.id desc`: its field must
 /// exist, and a many2one only accepts `.id` as property.
-fn check_model_order_item(
+fn check_order_item(
     session: &mut SessionInfo,
     diagnostics: &mut Vec<Diagnostic>,
     class: ClassKey,
@@ -50,7 +66,7 @@ fn check_model_order_item(
     order_string: &ExprStringLiteral,
     item: OrderItem,
 ) {
-    check_model_order_keywords(session, diagnostics, order_string, &item);
+    check_order_keywords(session, diagnostics, order_string, &item);
     let Some((field_name, start, end)) = item.field() else {
         // The first word starts with a property, e.g. `.id`
         if let Some((word, start)) = item.first_word() {
@@ -80,10 +96,10 @@ fn check_model_order_item(
     }
 }
 
-/// Validation for the keywords after the field of an _order item: the first one not allowed
+/// Validation for the keywords after the field of an order item: the first one not allowed
 /// where it is (e.g. `dsc`, or `desc` after `nulls first`), a `nulls` without `first` or `last`,
 /// and more than one space in `nulls first` or `nulls last`.
-fn check_model_order_keywords(session: &SessionInfo, diagnostics: &mut Vec<Diagnostic>, order_string: &ExprStringLiteral, item: &OrderItem) {
+fn check_order_keywords(session: &SessionInfo, diagnostics: &mut Vec<Diagnostic>, order_string: &ExprStringLiteral, item: &OrderItem) {
     let order = order_string.value.to_str();
     let keywords = item.keywords();
     let words: Vec<&str> = keywords.iter().map(|&(keyword, _, _)| keyword).collect();

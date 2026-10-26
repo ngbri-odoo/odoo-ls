@@ -8,6 +8,7 @@ use crate::core::symbols::storage::xml::xml_field_symbol::XmlFieldName;
 use crate::core::symbols::symbol_keys::{FunctionKey, KeyValidator, ModuleKey, SourceFileKey, SymbolKey, Wk};
 use crate::core::symbols::storage::SymbolTable;
 use crate::core::symbols::FunctionSymbol;
+use crate::core::python_validator;
 use crate::features::references::ReferenceTarget;
 use crate::threads::SessionInfo;
 use crate::{constants::*, Sy};
@@ -2054,11 +2055,16 @@ impl Evaluation {
         let st = &session.sync_odoo.symbol_table;
         let mut diagnostics = vec![];
         let Some(symbol) = function_arg.symbol.upgrade(st) else { return diagnostics; };
-        let evaluations = &st[symbol].evaluations;
-        if evaluations.len() == 1
-            && let EvaluationSymbolPtr::DOMAIN = evaluations[0].symbol.sym {
+        let evaluations = st[symbol].evaluations.as_slice();
+        match evaluations {
+            [Evaluation { symbol: EvaluationSymbol { sym: EvaluationSymbolPtr::DOMAIN, .. }, .. }] => {
                 diagnostics.extend(Evaluation::validate_domain(session, on_object, from_module, arg));
-            }
+            },
+            [Evaluation { symbol: EvaluationSymbol { sym: EvaluationSymbolPtr::ORDER, .. }, .. }] => {
+                diagnostics.extend(python_validator::validate_order_arg(session, on_object, from_module, arg));
+            },
+            _ => {}
+        }
         diagnostics
     }
 
