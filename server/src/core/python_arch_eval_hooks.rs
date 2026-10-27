@@ -47,6 +47,7 @@ pub fn get_base_model_symbol(odoo: &mut SyncOdoo) -> Option<SymbolKey> {
     let base_model_symbol = odoo.get_symbol(odoo.config.odoo_path().as_ref().unwrap(), base_model_tree, u32::MAX);
     base_model_symbol.first().copied()
 }
+
 pub struct PythonArchEvalFileHook {
     pub odoo_entry: bool,
     pub trees: Vec<(Version, Version, TreeStrSlice<'static>)>, //if tree content is set, will provide symbol in file content instead of the file symbol to func
@@ -399,6 +400,19 @@ static arch_eval_function_hooks: LazyLock<Vec<PythonArchEvalFunctionHook>> = Laz
                 }
             }
     }},
+    PythonArchEvalFunctionHook {odoo_entry: true,
+                        tree: vec![((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "search"])),
+                        ((18, 1), (999, 0), (&["odoo", "orm", "models"], &["BaseModel", "search"])),
+                        ((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "search_fetch"])),
+                        ((18, 1), (999, 0), (&["odoo", "orm", "models"], &["BaseModel", "search_fetch"])),
+                        ((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "search_read"])),
+                        ((18, 1), (999, 0), (&["odoo", "orm", "models"], &["BaseModel", "search_read"])),
+                        ((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "_search"])),
+                        ((18, 1), (999, 0), (&["odoo", "orm", "models"], &["BaseModel", "_search"])),
+                        ((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "_name_search"])),
+                        ((0, 0), (999, 0), (&["odoo", "addons", "web", "models", "models"], &["Base", "web_search_read"]))],
+                        if_exist_only: true,
+                        func: PythonArchEvalHooks::mark_order_param},
     PythonArchEvalFunctionHook {odoo_entry: true,
                         tree: vec![((0, 0), (18, 1), (&["odoo", "models"], &["BaseModel", "browse"])),
                         ((18, 1), (999, 0), (&["odoo", "orm", "models"], &["BaseModel", "browse"]))],
@@ -973,6 +987,18 @@ impl PythonArchEvalHooks {
             value: None,
             range: None
         }];
+    }
+
+    /// Mark the `order` parameter of a search method of the models, e.g. `search(order='name desc')`,
+    /// wherever it is in the signature
+    fn mark_order_param(odoo: &mut SyncOdoo, _entry_point: EntryPointKey, symbol: FunctionKey) {
+        let order_param = odoo.symbol_table[symbol].args.iter()
+            .filter_map(|arg| arg.symbol.upgrade(&odoo.symbol_table))
+            .find(|&arg_symbol| odoo.symbol_table.name(arg_symbol) == "order");
+        if let Some(order_param) = order_param {
+            let order = Evaluation::new_order(odoo);
+            odoo.symbol_table[order_param].evaluations = vec![order];
+        }
     }
 
     /// Make the file of `scope` depend on the definitions of `model`, unless it is an orm file

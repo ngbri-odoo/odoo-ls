@@ -214,6 +214,7 @@ pub enum EvaluationSymbolPtr {
     // Weak symbol is the current symbol pointed to self. Under subclasses this would get overridden on evaluation
     ARG(u32),
     DOMAIN,
+    ORDER,
     NONE,
     UNBOUND(OYarn),
     #[default]
@@ -352,6 +353,17 @@ impl Evaluation {
         Evaluation {
             symbol: EvaluationSymbol {
                 sym: EvaluationSymbolPtr::DOMAIN,
+                get_symbol_hook: None
+            },
+            value: None,
+            range: None
+        }
+    }
+
+    pub fn new_order(_odoo: &mut SyncOdoo) -> Evaluation {
+        Evaluation {
+            symbol: EvaluationSymbol {
+                sym: EvaluationSymbolPtr::ORDER,
                 get_symbol_hook: None
             },
             value: None,
@@ -2083,6 +2095,7 @@ impl EvaluationSymbol {
             EvaluationSymbolPtr::NONE => None,
             EvaluationSymbolPtr::UNBOUND(_) => None,
             EvaluationSymbolPtr::DOMAIN => Some(false), //domain is always used for types
+            EvaluationSymbolPtr::ORDER => Some(false), //order is always used for types
             EvaluationSymbolPtr::SELF(w) | EvaluationSymbolPtr::WEAK(w) => w.instance,
         }
     }
@@ -2112,7 +2125,8 @@ impl EvaluationSymbol {
             | EvaluationSymbolPtr::ARG(_)
             | EvaluationSymbolPtr::NONE
             | EvaluationSymbolPtr::UNBOUND(_)
-            | EvaluationSymbolPtr::DOMAIN => EvaluationSymbolWeak{ weak: Wk::null(), context: Context::default(), instance: Some(false), is_super: false },
+            | EvaluationSymbolPtr::DOMAIN
+            | EvaluationSymbolPtr::ORDER => EvaluationSymbolWeak{ weak: Wk::null(), context: Context::default(), instance: Some(false), is_super: false },
             EvaluationSymbolPtr::SELF(_) => {
                 let class = context.
                 and_then(|context| context.get(ContextKey::ParentFor).or(context.get(ContextKey::BaseAttr)))
@@ -2137,6 +2151,7 @@ impl EvaluationSymbol {
             EvaluationSymbolPtr::NONE => eval,
             EvaluationSymbolPtr::UNBOUND(_) => eval,
             EvaluationSymbolPtr::DOMAIN => eval,
+            EvaluationSymbolPtr::ORDER => eval,
             EvaluationSymbolPtr::SELF(_) => {
                 let default = EvaluationSymbolPtr::WEAK(EvaluationSymbolWeak{weak: Wk::null(), context: Context::default(), instance: Some(false), is_super: false});
                 let class = context.as_ref().and_then(|context| context.get(ContextKey::BaseCall)).unwrap_or(&ContextValue::BOOLEAN(false));
